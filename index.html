@@ -38,12 +38,12 @@
                     加入房間
                 </button>
 
+                <!-- 保留一個手動重置按鈕，以防萬一卡住時可以一鍵急救 -->
+                <button @click="forceResetRoom" class="w-full bg-red-50 text-red-500 py-1.5 rounded-lg text-xs font-semibold hover:bg-red-100 transition">
+                    🔄 畫面卡住？點此強制清空重置房間
+                </button>
+
                 <p class="text-xs text-red-500 text-center" x-text="errorMessage"></p>
-                
-                <!-- 狀態提示 -->
-                <div class="text-xs text-slate-400 text-center pt-2">
-                    目前房內等待人數：<span x-text="playerCount"></span> 人 (系統會自動清理舊資料)
-                </div>
             </div>
         </template>
 
@@ -91,65 +91,4 @@
                             <h3 class="text-xs font-bold text-slate-400 uppercase mb-2">此前猜測紀錄：</h3>
                             <div class="space-y-2 max-h-40 overflow-y-auto pr-1">
                                 <template x-for="history in historyList">
-                                    <div class="p-2 bg-slate-50 rounded border text-xs space-y-1">
-                                        <div class="flex justify-between font-semibold text-slate-600">
-                                            <span>第 <span x-text="history.round"></span> 回合</span>
-                                            <span x-text="history.matched ? '✨ 一致' : '❌ 未一致'" :class="history.matched ? 'text-emerald-600' : 'text-red-500'"></span>
-                                        </div>
-                                        <div class="flex flex-wrap gap-1 text-slate-500">
-                                            <template x-for="w in history.words">
-                                                <span class="bg-white px-1.5 py-0.5 rounded border"><span x-text="w.name"></span>: <b class="text-slate-800" x-text="w.word"></b></span>
-                                            </template>
-                                        </div>
-                                    </div>
-                                </template>
-                            </div>
-                        </div>
-
-                    </div>
-                </template>
-
-                <!-- 畫面 B: 中間結果介面 -->
-                <template x-if="gameState === 'result'">
-                    <div class="space-y-6">
-                        <h2 class="text-lg font-bold text-slate-700 text-center">📊 大家的答案揭曉！</h2>
-                        
-                        <div class="space-y-2">
-                            <template x-for="p in playersList">
-                                <div class="flex justify-between items-center bg-slate-50 p-3 rounded-lg border">
-                                    <span class="font-medium text-slate-700" x-text="p.name"></span>
-                                    <span class="text-lg font-bold text-indigo-600" x-text="p.word"></span>
-                                </div>
-                            </template>
-                        </div>
-
-                        <div class="bg-indigo-50 p-3 rounded-lg text-xs text-indigo-700 text-center" x-text="isAllMatch() ? '🎉 太神啦！大家的答案完全一致！自動進入結算！' : '答案不一致，請選擇下一步：'"></div>
-
-                        <!-- 左右按鈕（當答案不一致時顯示） -->
-                        <div class="flex gap-4 pt-2" x-show="!isAllMatch()">
-                            <button @click="voteAction('agree')" 
-                                    :class="hasAgreed ? 'bg-emerald-800' : 'bg-emerald-600 hover:bg-emerald-700'"
-                                    class="flex-1 text-white py-3 rounded-lg font-semibold transition text-center shadow text-sm">
-                                <span x-text="hasAgreed ? '✅ 已同意' : '我同意這個答案'"></span>
-                            </button>
-                            <button @click="voteAction('continue')" 
-                                    :class="hasContinued ? 'bg-amber-700' : 'bg-amber-500 hover:bg-amber-600'"
-                                    class="flex-1 text-white py-3 rounded-lg font-semibold transition text-center shadow text-sm">
-                                <span x-text="hasContinued ? '✅ 已選擇繼續' : '繼續'"></span>
-                            </button>
-                        </div>
-
-                        <!-- 投票狀態提示 -->
-                        <div class="text-center text-xs text-slate-400" x-show="!isAllMatch()">
-                            同意人數: <span x-text="playersList.filter(p => p.agree).length"></span> / <span x-text="playerCount"></span> | 
-                            繼續人數: <span x-text="playersList.filter(p => p.continueVote).length"></span> / <span x-text="playerCount"></span>
-                        </div>
-                    </div>
-                </template>
-
-                <!-- 畫面 C: 結算頁面 -->
-                <template x-if="gameState === 'finished'">
-                    <div class="space-y-6">
-                        <div class="text-center">
-                            <h2 class="text-xl font-bold text-emerald-600">🏆 達成完全默契！</h2>
-                        </div>
+                                    <div class="p-
