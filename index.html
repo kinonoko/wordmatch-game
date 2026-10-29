@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>心有靈犀小遊戲</title>
+    <!-- 引入 Tailwind CSS 與 Alpine.js -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body class="bg-slate-100 flex items-center justify-center min-h-screen" x-data="gameApp()">
+
+    <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md">
+        
+        <h1 class="text-2xl font-bold text-center mb-6 text-slate-800">🧠 心有靈犀小遊戲</h1>
+
+        <!-- 狀態 1: 登入介面 -->
+        <template x-if="!inGame">
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-slate-600 mb-1">你的暱稱</label>
+                    <input type="text" x-model="playerName" placeholder="請輸入名字" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-400 outline-none">
+                </div>
+                <button @click="joinGame" class="w-full bg-indigo-600 text-white py-2 rounded-lg font-semibold hover:bg-indigo-700 transition">
+                    進入遊戲 (2-3人)
+                </button>
+                <p class="text-xs text-red-500 text-center" x-text="errorMessage"></p>
+            </div>
+        </template>
+
+        <!-- 狀態 2: 遊戲進行中 -->
+        <template x-if="inGame">
+            <div class="space-y-6">
+                <!-- 房間頂部資訊 -->
+                <div class="flex justify-between items-center mb-2 border-b pb-3">
+                    <span class="text-sm font-medium text-slate-500">線上玩家人數: <span x-text="playerCount"></span>/3</span>
+                    <span class="text-sm font-semibold text-indigo-600" x-text="getStatusText()"></span>
+                </div>
+
+                <!-- 畫面 A: 輸入詞語介面 -->
+                <template x-if="gameState === 'input'">
+                    <div class="space-y-4">
+                        <h2 class="text-lg font-bold text-slate-700 text-center">請輸入你想到的詞語</h2>
+                        <div class="text-center text-xs text-slate-400">送出後即無法更改，請等待其他人。</div>
+                        
+                        <div x-show="hasSubmitted" class="p-4 bg-amber-50 text-amber-700 rounded-lg text-center font-medium">
+                            已送出：「<span x-text="myWord"></span>」，正在等待其他玩家...
+                        </div>
+
+                        <div x-show="!hasSubmitted" class="space-y-3">
+                            <input type="text" x-model="inputWord" placeholder="例如：蘋果" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-400 outline-none">
+                            <button @click="submitWord" class="w-full bg-emerald-600 text-white py-2 rounded-lg font-semibold hover:bg-emerald-700 transition">
+                                送出詞語
+                            </button>
+                        </div>
+
+                        <!-- 顯示所有玩家狀態 -->
+                        <div class="mt-4">
+                            <h3 class="text-xs font-bold text-slate-400 uppercase mb-2">玩家狀態：</h3>
+                            <ul class="space-y-2">
+                                <template x-for="p in playersList">
+                                    <li class="flex justify-between text-sm bg-slate-50 px-3 py-2 rounded">
+                                        <span x-text="p.name"></span>
+                                        <span x-text="p.word ? '✅ 已送出' : '⏳ 思考中...'" :class="p.word ? 'text-emerald-600' : 'text-slate-400'"></span>
+                                    </li>
+                                </template>
+                            </ul>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- 畫面 B: 中間結果介面 -->
+                <template x-if="gameState === 'result'">
+                    <div class="space-y-6">
+                        <h2 class="text-lg font-bold text-slate-700 text-center">📊 大家的答案揭曉！</h2>
+                        
+                        <div class="space-y-2">
+                            <template x-for="p in playersList">
+                                <div class="flex justify-between items-center bg-slate-50 p-3 rounded-lg border">
+                                    <span class="font-medium text-slate-700" x-text="p.name"></span>
+                                    <span class="text-lg font-bold text-indigo-600" x-text="p.word"></span>
+                                </div>
+                            </template>
+                        </div>
+
+                        <div class="bg-indigo-50 p-3 rounded-lg text-xs text-indigo-700 text-center" x-text="isAllMatch() ? '🎉 太神啦！大家的答案完全一致！自動進入結算！' : '答案不一致，請選擇下一步：'"></div>
+
+                        <!-- 左右兩個不一樣的按鈕 -->
+                        <div class="flex gap-4 pt-2" x-show="!isAllMatch()">
+                            <button @click="voteAction('agree')" 
+                                    :class="hasAgreed ? 'bg-emerald-800' : 'bg-emerald-600 hover:bg-emerald-700'"
+                                    class="flex-1 text-white py-3 rounded-lg font-semibold transition text-center shadow">
+                                <span x-text="hasAgreed ? '✅ 已同意' : '我同意這個答案'"></span>
+                            </button>
+                            <button @click="voteAction('continue')" class="flex-1 bg-amber-500 text-white py-3 rounded-lg font-semibold hover:bg-amber-600 transition text-center shadow">
+                                繼續
+                            </button>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- 畫面 C: 結算頁面 -->
+                <template x-if="gameState === 'finished'">
+                    <div class="space-y-6">
+                        <div class="text-center">
+                            <h2 class="text-xl font-bold text-emerald-600">🏆 達成完全默契！</h2>
+                        </div>
+
+                        <div>
+                            <h3 class="text-sm font-bold text-slate-500 uppercase mb-3">歷史猜測紀錄</h3>
+                            <div class="space-y-3 max-h-60 overflow-y-auto pr-1">
+                                <template x-for="history in historyList">
+                                    <div class="p-3 bg-slate-50 rounded-lg border text-sm space-y-1">
+                                        <div class="flex justify-between font-semibold text-slate-600">
+                                            <span>第 <span x-text="history.round"></span> 回合</span>
+                                            <span class="text-emerald-600">✨ 成功</span>
+                                        </div>
+                                        <div class="flex flex-wrap gap-2 text-xs text-slate-500">
+                                            <template x-for="w in history.words">
+                                                <span class="bg-white px-2 py-1 rounded border"><span x-text="w.name"></span>: <b class="text-slate-800" x-text="w.word"></b></span>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+
+                        <button @click="resetGame" class="w-full bg-indigo-600 text-white py-2 rounded-lg font-semibold hover:bg-indigo-700 transition">
+                            再玩一次
+                        </button>
+                    </div>
+                </template>
+
+            </div>
+        </template>
+
+    </div>
+
+    <!-- 載入 Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getDatabase, ref, set, onValue, update, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+        // ⚠️ 請換成你在 Firebase 專案設定取得的資料
+        const firebaseConfig = {
+            apiKey: "AIzaSyA8_GI-4H8qEflLxcyniExTbxcpMHB4VM8",
+            authDomain: "wordmatch-ea8a1.firebaseapp.com",
+            databaseURL: "https://wordmatch-ea8a1-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "wordmatch-ea8a1",
+            storageBucket: "wordmatch-ea8a1.firebasestorage.app",
+            messagingSenderId: "931845102434",
+            appId: "1:931845102434:web:2e89074537b98a92f86a3b"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        // 把 Firebase 工具與 Alpine.js 綁定
+        window.db = db;
+        window.dbTools = { ref, set, onValue, update, remove };
+        window.dispatchEvent(new CustomEvent('firebase-ready'));
+    </script>
+
+    <script>
+        function gameApp() {
+            return {
+                playerName: '',
+                inGame: false,
+                errorMessage: '',
+                playerId: 'player_' + Math.random().toString(36.25).substr(2, 9),
+                
+                // 遊戲狀態變數
+                gameState: 'input',
+                inputWord: '',
+                hasSubmitted: false,
+                hasAgreed: false,
+                players: {},
+                history: [],
+
+                get playerCount() {
+                    return Object.keys(this.players).length;
+                },
+
+                get playersList() {
+                    return Object.values(this.players);
+                },
+
+                get historyList() {
+                    return Array.isArray(this.history) ? this.history : Object.values(this.history || {});
+                },
+
+                init() {
+                    window.addEventListener('firebase-ready', () => {
+                        const { ref, onValue } = window.dbTools;
+                        const gameRef = ref(window.db, 'room_1');
+
+                        // 即時監聽雲端資料庫的任何變動
+                        onValue(gameRef, (snapshot) => {
+                            const data = snapshot.val();
+                            if (data) {
+                                this.gameState = data.gameState || 'input';
+                                this.players = data.players || {};
+                                this.history = data.history || [];
+
+                                // 同步自己的送出/同意狀態
+                                if (this.players[this.playerId]) {
+                                    this.hasSubmitted = !!this.players[this.playerId].word;
+                                    if (!this.players[this.playerId].word && this.gameState === 'input') {
+                                        this.hasAgreed = false;
+                                    }
+                                }
+                            }
+                        });
+                    });
+                },
+
+                joinGame() {
+                    if (!this.playerName.trim()) {
+                        this.errorMessage = '請輸入暱稱';
+                        return;
+                    }
+                    if (this.playerCount >= 3 && !this.players[this.playerId]) {
+                        this.errorMessage = '房間已滿（最多 3 人）';
+                        return;
+                    }
+
+                    const { ref, update } = window.dbTools;
+                    update(ref(window.db, `room_1/players/${this.playerId}`), {
+                        name: this.playerName.trim(),
+                        word: '',
+                        agree: false
+                    });
+
+                    this.inGame = true;
+                },
+
+                submitWord() {
+                    if (!this.inputWord.trim()) return;
+                    
+                    const { ref, update } = window.dbTools;
+                    update(ref(window.db, `room_1/players/${this.playerId}`), {
+                        word: this.inputWord.trim()
+                    }).then(() => {
+                        this.hasSubmitted = true;
+                        this.checkAllSubmitted();
+                    });
+                },
+
+                // 檢查是否所有人都送出詞語
+                checkAllSubmitted() {
+                    const playersArray = Object.values(this.players);
+                    if (playersArray.length === 0) return;
+
+                    // 確保更新自己後，大家都送出了
+                    const allDone = playersArray.every(p => p.id === this.playerId ? this.inputWord.trim() : p.word);
+                    
+                    if (allDone && playersArray.length >= 2) {
+                        const firstWord = playersArray[0].id === this.playerId ? this.inputWord.trim() : playersArray[0].word;
+                        const isMatch = playersArray.every(p => (p.id === this.playerId ? this.inputWord.trim() : p.word) === firstWord);
+
+                        let newHistory = this.historyList;
+                        newHistory.push({
+                            round: newHistory.length + 1,
+                            words: playersArray.map(p => ({ 
+                                name: p.name, 
+                                word: p.id === this.playerId ? this.inputWord.trim() : p.word 
+                            })),
+                            matched: isMatch
+                        });
+
+                        const { ref, set } = window.dbTools;
+                        set(ref(window.db, `room_1/gameState`), 'result');
+                        set(ref(window.db, `room_1/history`), newHistory);
+                    }
+                },
+
+                voteAction(action) {
+                    const { ref, update, set } = window.dbTools;
+
+                    if (action === 'agree') {
+                        this.hasAgreed = true;
+                        update(ref(window.db, `room_1/players/${this.playerId}`), { agree: true }).then(() => {
+                            // 檢查是否大家都按同意了
+                            setTimeout(() => {
+                                const playersArray = Object.values(this.players);
+                                const allAgreed = playersArray.every(p => p.id === this.playerId ? true : p.agree);
+                                if (allAgreed) {
+                                    set(ref(window.db, `room_1/gameState`), 'finished');
+                                }
+                            }, 300);
+                        });
+                    } else if (action === 'continue') {
+                        // 清空大家的詞語與投票，回到輸入畫面
+                        const updates = {};
+                        Object.keys(this.players).forEach(id => {
+                            updates[`room_1/players/${id}/word`] = '';
+                            updates[`room_1/players/${id}/agree`] = false;
+                        });
+                        updates[`room_1/gameState`] = 'input';
+                        update(ref(window.db, `room_1`), updates);
+                    }
+                },
+
+                isAllMatch() {
+                    const list = this.playersList;
+                    if (list.length === 0) return false;
+                    const firstWord = list[0].word;
+                    return list.every(p => p.word === firstWord);
+                },
+
+                getStatusText() {
+                    if (this.gameState === 'input') return '階段：輸入詞語';
+                    if (this.gameState === 'result') return '階段：結果揭曉';
+                    if (this.gameState === 'finished') return '階段：遊戲結算';
+                    return '';
+                },
+
+                resetGame() {
+                    this.voteAction('continue');
+                }
+            }
+        }
+    </script>
+</body>
+</html>
