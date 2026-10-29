@@ -38,16 +38,11 @@
                     加入房間
                 </button>
 
-                <!-- 新增：房間卡住時的強制重置按鈕 -->
-                <button @click="forceResetRoom" class="w-full bg-red-100 text-red-600 py-1.5 rounded-lg text-xs font-semibold hover:bg-red-200 transition">
-                    ⚠️ 房間卡住？點此強制清空重置
-                </button>
-
                 <p class="text-xs text-red-500 text-center" x-text="errorMessage"></p>
                 
-                <!-- 顯示目前房內卡住的人名（方便除錯） -->
+                <!-- 狀態提示 -->
                 <div class="text-xs text-slate-400 text-center pt-2">
-                    目前房內人數：<span x-text="playerCount"></span> 人
+                    目前房內等待人數：<span x-text="playerCount"></span> 人 (系統會自動清理舊資料)
                 </div>
             </div>
         </template>
@@ -160,7 +155,7 @@
                         </div>
 
                         <div>
-                            <h3 class="text-sm font-bold text-slate-500 uppercase mb-3">歷史猜測紀錄</h3>
+                            <h3 class="text-sm font-bold text-slate-500 uppercase mb-3">History 猜測紀錄</h3>
                             <div class="space-y-3 max-h-60 overflow-y-auto pr-1">
                                 <template x-for="history in historyList">
                                     <div class="p-3 bg-slate-50 rounded-lg border text-sm space-y-1">
@@ -243,12 +238,19 @@
 
                 init() {
                     window.addEventListener('firebase-ready', () => {
-                        const { ref, onValue } = window.dbTools;
+                        const { ref, onValue, remove } = window.dbTools;
                         const gameRef = ref(window.db, 'room_1');
 
                         onValue(gameRef, (snapshot) => {
                             const data = snapshot.val();
                             if (data) {
+                                // 💡 自動清理機制：如果在首頁（!this.inGame），且房內沒有任何玩家，自動清空殘留資料
+                                const currentPlayers = data.players ? Object.keys(data.players).length : 0;
+                                if (!this.inGame && currentPlayers === 0) {
+                                    remove(gameRef);
+                                    return;
+                                }
+
                                 this.gameState = data.gameState || 'input';
                                 this.players = data.players || {};
                                 this.history = data.history || [];
@@ -284,6 +286,7 @@
                     const { ref, update, onDisconnect } = window.dbTools;
                     const playerRef = ref(window.db, `room_1/players/${this.playerId}`);
 
+                    // 當玩家關閉網頁或斷線時，自動從 Firebase 刪除該玩家
                     onDisconnect(playerRef).remove();
 
                     update(ref(window.db, 'room_1'), {
@@ -299,15 +302,6 @@
 
                     this.inGame = true;
                     this.errorMessage = '';
-                },
-
-                // 強制清空房間按鈕功能
-                forceResetRoom() {
-                    const { ref, remove } = window.dbTools;
-                    remove(ref(window.db, 'room_1')).then(() => {
-                        alert('房間已成功強制重置！');
-                        window.location.reload();
-                    });
                 },
 
                 submitWord() {
@@ -392,7 +386,7 @@
 
                 getStatusText() {
                     if (this.gameState === 'input') return '階段：輸入詞語';
-                    if (this.gameState === 'result') return '階段：結果揭曉';
+                    if (this.gameState === 'result') return '階段': '結果揭曉';
                     if (this.gameState === 'finished') return '階段：遊戲結算';
                     return '';
                 },
