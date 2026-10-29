@@ -136,7 +136,7 @@
                                 <span x-text="hasAgreed ? '✅ 已同意' : '我同意這個答案'"></span>
                             </button>
                             <button @click="voteAction('continue')" 
-                                    :class="hasContinued ? 'bg-amber-700' : 'bg-amber-500 hover:bg-amber-600'"
+                                    :class="hasContinued ? 'bg-amber-800' : 'bg-amber-500 hover:bg-amber-600'"
                                     class="flex-1 text-white py-3 rounded-lg font-semibold transition text-center shadow text-sm">
                                 <span x-text="hasContinued ? '✅ 已選擇繼續' : '繼續'"></span>
                             </button>
@@ -247,7 +247,6 @@
                         onValue(gameRef, (snapshot) => {
                             const data = snapshot.val();
                             if (data) {
-                                // 如果房內已經沒有任何玩家在玩，自動重置遊戲狀態為 input 且清空歷史，防止卡在結算畫面
                                 const currentPlayers = data.players ? Object.keys(data.players).length : 0;
                                 if (currentPlayers === 0 && data.gameState === 'finished') {
                                     const { set } = window.dbTools;
@@ -356,74 +355,4 @@
                         });
 
                         const { ref, set } = window.dbTools;
-                        set(ref(window.db, `room_1/gameState`), 'result');
-                        set(ref(window.db, `room_1/history`), newHistory);
-                    }
-                },
-
-                voteAction(action) {
-                    const { ref, update, set } = window.dbTools;
-
-                    if (action === 'agree') {
-                        this.hasAgreed = true;
-                        update(ref(window.db, `room_1/players/${this.playerId}`), { agree: true }).then(() => {
-                            setTimeout(() => {
-                                const playersArray = Object.values(this.players);
-                                const allAgreed = playersArray.every(p => p.id === this.playerId ? true : p.agree);
-                                if (allAgreed) {
-                                    set(ref(window.db, `room_1/gameState`), 'finished');
-                                }
-                            }, 300);
-                        });
-                    } else if (action === 'continue') {
-                        this.hasContinued = true;
-                        update(ref(window.db, `room_1/players/${this.playerId}`), { continueVote: true }).then(() => {
-                            setTimeout(() => {
-                                const playersArray = Object.values(this.players);
-                                const allContinued = playersArray.every(p => p.id === this.playerId ? true : p.continueVote);
-                                if (allContinued) {
-                                    const updates = {};
-                                    Object.keys(this.players).forEach(id => {
-                                        updates[`room_1/players/${id}/word`] = '';
-                                        updates[`room_1/players/${id}/agree`] = false;
-                                        updates[`room_1/players/${id}/continueVote`] = false;
-                                    });
-                                    updates[`room_1/gameState`] = 'input';
-                                    update(ref(window.db, `room_1`), updates);
-                                }
-                            }, 300);
-                        });
-                    }
-                },
-
-                isAllMatch() {
-                    const list = this.playersList;
-                    if (list.length === 0) return false;
-                    const firstWord = list[0].word;
-                    return list.every(p => p.word === firstWord);
-                },
-
-                getStatusText() {
-                    if (this.gameState === 'input') return '階段：輸入詞語';
-                    if (this.gameState === 'result') return '階段：結果揭曉';
-                    if (this.gameState === 'finished') return '階段：遊戲結算';
-                    return '';
-                },
-
-                playAgain() {
-                    const { ref, update } = window.dbTools;
-                    const updates = {};
-                    Object.keys(this.players).forEach(id => {
-                        updates[`room_1/players/${id}/word`] = '';
-                        updates[`room_1/players/${id}/agree`] = false;
-                        updates[`room_1/players/${id}/continueVote`] = false;
-                    });
-                    updates[`room_1/gameState`] = 'input';
-                    updates[`room_1/history`] = [];
-                    update(ref(window.db, `room_1`), updates);
-                }
-            }
-        }
-    </script>
-</body>
-</html>
+                        set(ref(
