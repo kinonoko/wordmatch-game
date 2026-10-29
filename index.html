@@ -38,9 +38,9 @@
                     加入房間
                 </button>
 
-                <!-- 手動強制重置按鈕 -->
-                <button @click="forceResetRoom" class="w-full bg-red-50 text-red-500 py-1.5 rounded-lg text-xs font-semibold hover:bg-red-100 transition">
-                    🔄 畫面卡住？點此強制清空重置房間
+                <!-- 強制清空歷史與重置按鈕 -->
+                <button @click="forceResetRoom" class="w-full bg-red-50 text-red-500 py-2 rounded-lg text-xs font-semibold hover:bg-red-100 transition">
+                    🗑️ 清空歷史紀錄並重置房間
                 </button>
 
                 <p class="text-xs text-red-500 text-center" x-text="errorMessage"></p>
@@ -88,7 +88,10 @@
 
                         <!-- 輸入介面底下：歷史猜測紀錄 -->
                         <div class="mt-6 pt-4 border-t" x-show="historyList.length > 0">
-                            <h3 class="text-xs font-bold text-slate-400 uppercase mb-2">此前猜測紀錄：</h3>
+                            <div class="flex justify-between items-center mb-2">
+                                <h3 class="text-xs font-bold text-slate-400 uppercase">此前猜測紀錄：</h3>
+                                <button @click="clearHistory" class="text-xs text-red-500 hover:underline">清除紀錄</button>
+                            </div>
                             <div class="space-y-2 max-h-40 overflow-y-auto pr-1">
                                 <template x-for="history in historyList">
                                     <div class="p-2 bg-slate-50 rounded border text-xs space-y-1">
@@ -123,7 +126,7 @@
                             </template>
                         </div>
 
-                        <div class="bg-indigo-50 p-3 rounded-lg text-xs text-indigo-700 text-center" x-text="isAllMatch() ? '腦袋連接成功！自動進入結算！' : '答案不一致，請選擇下一步：'"></div>
+                        <div class="bg-indigo-50 p-3 rounded-lg text-xs text-indigo-700 text-center" x-text="isAllMatch() ? '🎉 太神啦！大家的答案完全一致！自動進入結算！' : '答案不一致，請選擇下一步：'"></div>
 
                         <!-- 左右按鈕（當答案不一致時顯示） -->
                         <div class="flex gap-4 pt-2" x-show="!isAllMatch()">
@@ -151,7 +154,7 @@
                 <template x-if="gameState === 'finished'">
                     <div class="space-y-6">
                         <div class="text-center">
-                            <h2 class="text-xl font-bold text-emerald-600">共腦成功 </h2>
+                            <h2 class="text-xl font-bold text-emerald-600">🏆 達成完全默契！</h2>
                         </div>
 
                         <div>
@@ -244,6 +247,15 @@
                         onValue(gameRef, (snapshot) => {
                             const data = snapshot.val();
                             if (data) {
+                                // 如果房內已經沒有任何玩家在玩，自動重置遊戲狀態為 input 且清空歷史，防止卡在結算畫面
+                                const currentPlayers = data.players ? Object.keys(data.players).length : 0;
+                                if (currentPlayers === 0 && data.gameState === 'finished') {
+                                    const { set } = window.dbTools;
+                                    set(ref(window.db, 'room_1/gameState'), 'input');
+                                    set(ref(window.db, 'room_1/history'), null);
+                                    return;
+                                }
+
                                 if (!this.inGame) return;
 
                                 this.gameState = data.gameState || 'input';
@@ -301,9 +313,14 @@
                 forceResetRoom() {
                     const { ref, remove } = window.dbTools;
                     remove(ref(window.db, 'room_1')).then(() => {
-                        alert('房間已重置！');
+                        alert('房間與歷史紀錄已完全重置！');
                         window.location.reload();
                     });
+                },
+
+                clearHistory() {
+                    const { ref, set } = window.dbTools;
+                    set(ref(window.db, 'room_1/history'), null);
                 },
 
                 submitWord() {
