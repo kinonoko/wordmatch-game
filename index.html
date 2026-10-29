@@ -136,4 +136,294 @@
                                 <span x-text="hasAgreed ? '✅ 已同意' : '我同意這個答案'"></span>
                             </button>
                             <button @click="voteAction('continue')" 
-                                    :class="hasContinued ? 'bg
+                                    :class="hasContinued ? 'bg-amber-700' : 'bg-amber-500 hover:bg-amber-600'"
+                                    class="flex-1 text-white py-3 rounded-lg font-semibold transition text-center shadow text-sm">
+                                <span x-text="hasContinued ? '✅ 已選擇繼續' : '繼續'"></span>
+                            </button>
+                        </div>
+
+                        <!-- 投票狀態提示 -->
+                        <div class="text-center text-xs text-slate-400" x-show="!isAllMatch()">
+                            同意人數: <span x-text="playersList.filter(p => p.agree).length"></span> / <span x-text="playerCount"></span> | 
+                            繼續人數: <span x-text="playersList.filter(p => p.continueVote).length"></span> / <span x-text="playerCount"></span>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- 畫面 C: 結算頁面 -->
+                <template x-if="gameState === 'finished'">
+                    <div class="space-y-6">
+                        <div class="text-center">
+                            <h2 class="text-xl font-bold text-emerald-600">🏆 達成完全默契！</h2>
+                        </div>
+
+                        <div>
+                            <h3 class="text-sm font-bold text-slate-500 uppercase mb-3">歷史猜測紀錄</h3>
+                            <div class="space-y-3 max-h-60 overflow-y-auto pr-1">
+                                <template x-for="history in historyList">
+                                    <div class="p-3 bg-slate-50 rounded-lg border text-sm space-y-1">
+                                        <div class="flex justify-between font-semibold text-slate-600">
+                                            <span>第 <span x-text="history.round"></span> 回合</span>
+                                            <span class="text-emerald-600">✨ 成功</span>
+                                        </div>
+                                        <div class="flex flex-wrap gap-2 text-xs text-slate-500">
+                                            <template x-for="w in history.words">
+                                                <span class="bg-white px-2 py-1 rounded border"><span x-text="w.name"></span>: <b class="text-slate-800" x-text="w.word"></b></span>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+
+                        <button @click="playAgain" class="w-full bg-indigo-600 text-white py-2 rounded-lg font-semibold hover:bg-indigo-700 transition">
+                            再玩一次
+                        </button>
+                    </div>
+                </template>
+
+            </div>
+        </template>
+
+    </div>
+
+    <!-- 載入 Firebase SDK 並套用你的設定 -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getDatabase, ref, set, onValue, update, remove, onDisconnect } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyA8_GI-4H8qEflLxcyniExTbxcpMHB4VM8",
+            authDomain: "wordmatch-ea8a1.firebaseapp.com",
+            databaseURL: "https://wordmatch-ea8a1-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "wordmatch-ea8a1",
+            storageBucket: "wordmatch-ea8a1.firebasestorage.app",
+            messagingSenderId: "931845102434",
+            appId: "1:931845102434:web:2e89074537b98a92f86a3b"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        window.db = db;
+        window.dbTools = { ref, set, onValue, update, remove, onDisconnect };
+        window.dispatchEvent(new CustomEvent('firebase-ready'));
+    </script>
+
+    <script>
+        function gameApp() {
+            return {
+                playerName: '',
+                maxPlayers: 2,
+                inGame: false,
+                errorMessage: '',
+                playerId: 'player_' + Math.random().toString(36).substr(2, 9),
+                
+                gameState: 'input',
+                inputWord: '',
+                hasSubmitted: false,
+                hasAgreed: false,
+                hasContinued: false,
+                players: {},
+                history: [],
+
+                get playerCount() {
+                    return Object.keys(this.players).length;
+                },
+
+                get playersList() {
+                    return Object.values(this.players);
+                },
+
+                get historyList() {
+                    return Array.isArray(this.history) ? this.history : Object.values(this.history || {});
+                },
+
+                init() {
+                    window.addEventListener('firebase-ready', () => {
+                        const { ref, onValue } = window.dbTools;
+                        const gameRef = ref(window.db, 'room_1');
+
+                        onValue(gameRef, (snapshot) => {
+                            const data = snapshot.val();
+                            if (data) {
+                                // 如果房內已經沒有任何玩家在玩，自動重置遊戲狀態為 input 且清空歷史，防止卡在結算畫面
+                                const currentPlayers = data.players ? Object.keys(data.players).length : 0;
+                                if (currentPlayers === 0 && data.gameState === 'finished') {
+                                    const { set } = window.dbTools;
+                                    set(ref(window.db, 'room_1/gameState'), 'input');
+                                    set(ref(window.db, 'room_1/history'), null);
+                                    return;
+                                }
+
+                                if (!this.inGame) return;
+
+                                this.gameState = data.gameState || 'input';
+                                this.players = data.players || {};
+                                this.history = data.history || [];
+                                
+                                if (data.maxPlayers) {
+                                    this.maxPlayers = data.maxPlayers;
+                                }
+
+                                if (this.players[this.playerId]) {
+                                    this.hasSubmitted = !!this.players[this.playerId].word;
+                                    if (this.gameState === 'input') {
+                                        this.hasAgreed = false;
+                                        this.hasContinued = false;
+                                    }
+                                }
+                            }
+                        });
+                    });
+                },
+
+                joinGame() {
+                    if (!this.playerName.trim()) {
+                        this.errorMessage = '請輸入暱稱';
+                        return;
+                    }
+
+                    const currentCount = this.playerCount;
+                    if (currentCount >= this.maxPlayers && !this.players[this.playerId]) {
+                        this.errorMessage = `房間已滿（目前房內有 ${currentCount} 人）`;
+                        return;
+                    }
+
+                    const { ref, update, onDisconnect } = window.dbTools;
+                    const playerRef = ref(window.db, `room_1/players/${this.playerId}`);
+
+                    onDisconnect(playerRef).remove();
+
+                    update(ref(window.db, 'room_1'), {
+                        maxPlayers: this.maxPlayers
+                    });
+
+                    update(playerRef, {
+                        name: this.playerName.trim(),
+                        word: '',
+                        agree: false,
+                        continueVote: false
+                    });
+
+                    this.inGame = true;
+                    this.errorMessage = '';
+                },
+
+                forceResetRoom() {
+                    const { ref, remove } = window.dbTools;
+                    remove(ref(window.db, 'room_1')).then(() => {
+                        alert('房間與歷史紀錄已完全重置！');
+                        window.location.reload();
+                    });
+                },
+
+                clearHistory() {
+                    const { ref, set } = window.dbTools;
+                    set(ref(window.db, 'room_1/history'), null);
+                },
+
+                submitWord() {
+                    if (!this.inputWord.trim()) return;
+                    
+                    const { ref, update } = window.dbTools;
+                    update(ref(window.db, `room_1/players/${this.playerId}`), {
+                        word: this.inputWord.trim()
+                    }).then(() => {
+                        this.hasSubmitted = true;
+                        this.checkAllSubmitted();
+                    });
+                },
+
+                checkAllSubmitted() {
+                    const playersArray = Object.values(this.players);
+                    if (playersArray.length === 0) return;
+
+                    const allDone = playersArray.every(p => p.id === this.playerId ? this.inputWord.trim() : p.word);
+                    
+                    if (allDone && playersArray.length >= this.maxPlayers) {
+                        const firstWord = playersArray[0].id === this.playerId ? this.inputWord.trim() : playersArray[0].word;
+                        const isMatch = playersArray.every(p => (p.id === this.playerId ? this.inputWord.trim() : p.word) === firstWord);
+
+                        let newHistory = this.historyList;
+                        newHistory.push({
+                            round: newHistory.length + 1,
+                            words: playersArray.map(p => ({ 
+                                name: p.name, 
+                                word: p.id === this.playerId ? this.inputWord.trim() : p.word 
+                            })),
+                            matched: isMatch
+                        });
+
+                        const { ref, set } = window.dbTools;
+                        set(ref(window.db, `room_1/gameState`), 'result');
+                        set(ref(window.db, `room_1/history`), newHistory);
+                    }
+                },
+
+                voteAction(action) {
+                    const { ref, update, set } = window.dbTools;
+
+                    if (action === 'agree') {
+                        this.hasAgreed = true;
+                        update(ref(window.db, `room_1/players/${this.playerId}`), { agree: true }).then(() => {
+                            setTimeout(() => {
+                                const playersArray = Object.values(this.players);
+                                const allAgreed = playersArray.every(p => p.id === this.playerId ? true : p.agree);
+                                if (allAgreed) {
+                                    set(ref(window.db, `room_1/gameState`), 'finished');
+                                }
+                            }, 300);
+                        });
+                    } else if (action === 'continue') {
+                        this.hasContinued = true;
+                        update(ref(window.db, `room_1/players/${this.playerId}`), { continueVote: true }).then(() => {
+                            setTimeout(() => {
+                                const playersArray = Object.values(this.players);
+                                const allContinued = playersArray.every(p => p.id === this.playerId ? true : p.continueVote);
+                                if (allContinued) {
+                                    const updates = {};
+                                    Object.keys(this.players).forEach(id => {
+                                        updates[`room_1/players/${id}/word`] = '';
+                                        updates[`room_1/players/${id}/agree`] = false;
+                                        updates[`room_1/players/${id}/continueVote`] = false;
+                                    });
+                                    updates[`room_1/gameState`] = 'input';
+                                    update(ref(window.db, `room_1`), updates);
+                                }
+                            }, 300);
+                        });
+                    }
+                },
+
+                isAllMatch() {
+                    const list = this.playersList;
+                    if (list.length === 0) return false;
+                    const firstWord = list[0].word;
+                    return list.every(p => p.word === firstWord);
+                },
+
+                getStatusText() {
+                    if (this.gameState === 'input') return '階段：輸入詞語';
+                    if (this.gameState === 'result') return '階段：結果揭曉';
+                    if (this.gameState === 'finished') return '階段：遊戲結算';
+                    return '';
+                },
+
+                playAgain() {
+                    const { ref, update } = window.dbTools;
+                    const updates = {};
+                    Object.keys(this.players).forEach(id => {
+                        updates[`room_1/players/${id}/word`] = '';
+                        updates[`room_1/players/${id}/agree`] = false;
+                        updates[`room_1/players/${id}/continueVote`] = false;
+                    });
+                    updates[`room_1/gameState`] = 'input';
+                    updates[`room_1/history`] = [];
+                    update(ref(window.db, `room_1`), updates);
+                }
+            }
+        }
+    </script>
+</body>
+</html>
